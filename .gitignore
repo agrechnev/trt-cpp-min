@@ -1,0 +1,11 @@
+# CMake
+build/
+# CLion + QtCreator + KDevelop
+build*/
+cmake-build-*/
+*.user
+.idea/
+.kdev4/
+*.kdev4
+*.iml
+.vscode/
