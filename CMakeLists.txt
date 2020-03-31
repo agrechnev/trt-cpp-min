@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 project(trt-cpp-min)
 set(CMAKE_CXX_STANDARD 14)
 file(COPY model1.onnx DESTINATION .)
+file(COPY model2.onnx DESTINATION .)
 
 # CUDA
 find_package(CUDA REQUIRED)
@@ -14,3 +15,4 @@ message("CUDA_LIBRARIES = ${CUDA_LIBRARIES}")
 link_libraries(nvinfer nvonnxparser ${CUDA_LIBRARIES})
 
 add_executable(example1 example1.cpp)
+add_executable(example2 example2.cpp)

@@ -1,13 +1,12 @@
 // By Oleksiy Grechnyev
-// Example 1: An (almost) minimal TensorRT C++ inference example
-// This one uses model1.onnx with fixed batch size (1)
-// Batch size at inference must be the same !
+// Example 2 : Batch inference for model2.onnx with dynamic batch size
+// I use here batch of 2
+// This is TensorRT 7.0 API, things were easier in older TensorRT !
 
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-#include <numeric>
 
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
@@ -55,21 +54,29 @@ struct Destroy {
 //======================================================================================================================
 
 /// Parse onnx file and create a TRT engine
-nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer1::ILogger &logger) {
+nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer1::ILogger &logger, int batchSize) {
     using namespace std;
     using namespace nvinfer1;
 
     unique_ptr<IBuilder, Destroy<IBuilder>> builder{createInferBuilder(logger)};
     unique_ptr<INetworkDefinition, Destroy<INetworkDefinition>> network{
-            builder->createNetworkV2(1U << (unsigned) NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)};
+            builder->createNetworkV2(1U << (unsigned) NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)
+    };
     unique_ptr<nvonnxparser::IParser, Destroy<nvonnxparser::IParser>> parser{
             nvonnxparser::createParser(*network, logger)};
 
     if (!parser->parseFromFile(onnxFileName.c_str(), static_cast<int>(ILogger::Severity::kINFO)))
         throw runtime_error("ERROR: could not parse ONNX model " + onnxFileName + " !");
 
-    // Modern version with config
+    // Create Optimization profile and set the batch size
+    IOptimizationProfile *profile = builder->createOptimizationProfile();
+    profile->setDimensions("input", OptProfileSelector::kMIN, Dims2{batchSize, 3});
+    profile->setDimensions("input", OptProfileSelector::kMAX, Dims2{batchSize, 3});
+    profile->setDimensions("input", OptProfileSelector::kOPT, Dims2{batchSize, 3});
+
+    // Build engine
     unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
+    config->addOptimizationProfile(profile);
     return builder->buildEngineWithConfig(*network, *config);
 }
 
@@ -80,12 +87,8 @@ void launchInference(nvinfer1::IExecutionContext *context, cudaStream_t stream, 
 
     int inputId = 0, outputId = 1; // Here I assume input=0, output=1 for the current network
 
-    // Infer synchronously as an alternative, no stream needed
-//    cudaMemcpy(bindings[inputId], inputTensor.data(), inputTensor.size() * sizeof(float), cudaMemcpyHostToDevice);
-//    bool res = context->executeV2(bindings);
-//    cudaMemcpy(outputTensor.data(), bindings[outputId], outputTensor.size() * sizeof(float), cudaMemcpyDeviceToHost);
-
     // Infer asynchronously, in a proper cuda way !
+    using namespace std;
     cudaMemcpyAsync(bindings[inputId], inputTensor.data(), inputTensor.size() * sizeof(float), cudaMemcpyHostToDevice,
                     stream);
     context->enqueueV2(bindings, stream, nullptr);
@@ -100,9 +103,10 @@ int main() {
 
     // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT (almost) minimal example1 !!! ");
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example2 !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
-    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model1.onnx", logger));
+    int batchSize = 2;
+    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model2.onnx", logger, batchSize));
 
     // Optional : Print all bindings : name + dims + dtype
     cout << "=============\nBindings :\n";
@@ -123,28 +127,34 @@ int main() {
     // Create context
     logger.log(ILogger::Severity::kINFO, "Creating context ...");
     unique_ptr<IExecutionContext, Destroy<IExecutionContext>> context(engine->createExecutionContext());
+    // Very important, you must set batch size here, otherwise you get zero output !
+    context->setBindingDimensions(0, Dims2(batchSize, 3));
 
     // Create data structures for the inference
     cudaStream_t stream;
     cudaStreamCreate(&stream);
-    vector<float> inputTensor{0.5, -0.5, 1.0};
-    vector<float> outputTensor(2, -4.9);
+    vector<float> inputTensor{0.5, -0.5, 1.0, 0.0, 0.0, 0.0};
+    vector<float> outputTensor(2 * batchSize, -4.9);
     void *bindings[2]{0};
-    int batchSize = 1;
     // Alloc cuda memory for IO tensors
+    size_t sizes[] = {inputTensor.size(), outputTensor.size()};
     for (int i = 0; i < engine->getNbBindings(); ++i) {
-        Dims dims{engine->getBindingDimensions(i)};
-        size_t size = accumulate(dims.d, dims.d + dims.nbDims, batchSize, multiplies<size_t>());
         // Create CUDA buffer for Tensor.
-        cudaMalloc(&bindings[i], size * sizeof(float));
+        cudaMalloc(&bindings[i], sizes[i] * sizeof(float));
     }
 
     // Run the inference !
     cout << "Running the inference !" << endl;
     launchInference(context.get(), stream, inputTensor, outputTensor, bindings, batchSize);
     cudaStreamSynchronize(stream);
-    // Must be [1.5, 3.5]
-    cout << "y = [" << outputTensor[0] << ", " << outputTensor[1] << "]" << endl;
+    // Must be [ [1.5, 3.5], [-1,-2] ]
+    cout << "y = [";
+    for (int i = 0; i < batchSize; ++i) {
+        cout << " [" << outputTensor.at(2 * i) << ", " << outputTensor.at(2 * i + 1) << "]";
+        if (i < batchSize - 1)
+            cout << ", ";
+    }
+    cout << " ]" << endl;
 
     cudaStreamDestroy(stream);
     return 0;
