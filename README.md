@@ -14,4 +14,4 @@ b=[-1., -2.]
 For example, inferring for x=[0.5, -0.5, 1.0] should give y=[1.5, 3.5]. 
 
 * `gen_model1.py` A python 3 code to create and test model1.onnx. Requires `torch`, `onnx`, `onnxruntime`  
-* `example.1` A minimal C++ example 
+* `example1` A minimal C++ example 
