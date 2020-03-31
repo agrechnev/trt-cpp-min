@@ -7,9 +7,13 @@ This is a minimal C++ TensorRT 7 example, much simpler than the tutorial from Nv
 of a single Linear layer (3D -> 2D output) in PyTorch, convert in to ONNX, and run in C++ TensorRT 7. Requires CUDA and
 TensorRT 7 (`libnvinfer`, `libnvonnxparser`) installed in your system.
 
-Note : This is example for TensorRT 7 only. A lot has changed in this version ! ONNX with dynamic batch size is now difficult.
+Note : This is example for TensorRT 7 only (maybe 6, but not 5 !). A lot has changed in this version ! ONNX with dynamic batch size is now difficult.
 You must set the optimization profile, min/max/opt input size, and finally actual input size (in the context).
 Here I use `model1.onnx` with fixed batch size in `example1`, and `model2.onnx` with dynamic batch size in `example2`.  
+
+Update: It seems this stuff appeared already in TensorRT 6. I didn't try my code though. But in TensorRT 7 old ways to
+do things were hard-deprecated (removed).  
+
 
 `model1`, `model2` weights and biases:  
 w=[[1., 2., 3.], [4., 5., 6.]]  
