@@ -1,6 +1,8 @@
 // By Oleksiy Grechnyev, IT-JIM
-// Example 5 : Fun with int8 (But I don't think it works, these layers are not supported !)
-// I use here batch of 2
+// Example 5 : Here I construct network in-place, no ONNX parsing !
+// Here I use a single Fully Connected layer
+// I use here dynamic batches, a batch of 2
+// I also tried int8, but it was not selected
 
 #include <iostream>
 #include <sstream>
@@ -9,7 +11,6 @@
 #include <vector>
 
 #include <NvInfer.h>
-#include <NvOnnxParser.h>
 
 #include <cuda_runtime.h>
 
@@ -99,24 +100,31 @@ void printNetwork(const nvinfer1::INetworkDefinition &net) {
 }
 //======================================================================================================================
 
-/// Parse onnx file and create a TRT engine
-nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer1::ILogger &logger, int batchSize) {
+/// Create model and create a TRT engine
+nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize) {
     using namespace std;
     using namespace nvinfer1;
 
     unique_ptr<IBuilder, Destroy<IBuilder>> builder{createInferBuilder(logger)};
-
     unique_ptr<INetworkDefinition, Destroy<INetworkDefinition>> network{
             builder->createNetworkV2(1U << (unsigned) NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)
     };
-    unique_ptr<nvonnxparser::IParser, Destroy<nvonnxparser::IParser>> parser{
-            nvonnxparser::createParser(*network, logger)};
 
-    if (!parser->parseFromFile(onnxFileName.c_str(), static_cast<int>(ILogger::Severity::kINFO)))
-        throw runtime_error("ERROR: could not parse ONNX model " + onnxFileName + " !");
+    // Weights + bias
+    vector<float> w0 = {1., 2., 3., 4., 5., 6.};
+    vector<float> b0 = {-1., -2.};
+    Weights w{DataType::kFLOAT, w0.data(), (int64_t) w0.size()};
+    Weights b{DataType::kFLOAT, b0.data(), (int64_t) b0.size()};
 
-    // Optional : print network info
+    // A single 4D FC layer
+    ITensor *input = network->addInput("goblin_input", DataType::kFLOAT, Dims4(-1, 1, 1, 3));
+    auto fc = network->addFullyConnected(*input, 2, w, b);
+    ITensor *output = fc->getOutput(0);
+    output->setName("goblin_output");
+    network->markOutput(*output);
+
     printNetwork(*network);
+
 
     // Are fancy types available ?
     cout << "platformHasFastFp16 = " << builder->platformHasFastFp16() << endl;
@@ -124,13 +132,15 @@ nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer
 
     // Create Optimization profile and set the batch size
     IOptimizationProfile *profile = builder->createOptimizationProfile();
-    profile->setDimensions("input", OptProfileSelector::kMIN, Dims2{batchSize, 3});
-    profile->setDimensions("input", OptProfileSelector::kMAX, Dims2{batchSize, 3});
-    profile->setDimensions("input", OptProfileSelector::kOPT, Dims2{batchSize, 3});
+    profile->setDimensions("goblin_input", OptProfileSelector::kMIN, Dims4{batchSize, 1, 1, 3});
+    profile->setDimensions("goblin_input", OptProfileSelector::kMAX, Dims4{batchSize, 1, 1, 3});
+    profile->setDimensions("goblin_input", OptProfileSelector::kOPT, Dims4{batchSize, 1, 1, 3});
 
     // Set up the config
     unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
     config->addOptimizationProfile(profile);
+
+
     // Int8 quantization with the explicit range
     config->setFlag(BuilderFlag::kINT8);
     config->setFlag(BuilderFlag::kSTRICT_TYPES);
@@ -142,7 +152,7 @@ nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer
         ILayer *layer = network->getLayer(i);
         ITensor *tensor = layer->getOutput(0);
         tensor->setDynamicRange(minRange, maxRange);
-        layer->setPrecision(DataType::kINT8);
+//        layer->setPrecision(DataType::kINT8);
 //        layer->setOutputType(0, DataType::kINT8);
     }
     network->getInput(0)->setDynamicRange(minRange, maxRange);
@@ -174,10 +184,10 @@ int main() {
 
     // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example5 !!! ");
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example4 !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
     int batchSize = 2;
-    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model2.onnx", logger, batchSize));
+    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine(logger, batchSize));
 
     if (!engine)
         throw runtime_error("Engine creation failed !");
@@ -197,7 +207,7 @@ int main() {
     logger.log(ILogger::Severity::kINFO, "Creating context ...");
     unique_ptr<IExecutionContext, Destroy<IExecutionContext>> context(engine->createExecutionContext());
     // Very important, you must set batch size here, otherwise you get zero output !
-    context->setBindingDimensions(0, Dims2(batchSize, 3));
+    context->setBindingDimensions(0, Dims4(batchSize, 1, 1, 3));
 
     // Create data structures for the inference
     cudaStream_t stream;
