@@ -1,4 +1,4 @@
-// By Oleksiy Grechnyev
+// By Oleksiy Grechnyev, IT-JIM
 // Example 1: An (almost) minimal TensorRT C++ inference example
 // This one uses model1.onnx with fixed batch size (1)
 // Batch size at inference must be the same !
@@ -103,6 +103,9 @@ int main() {
     logger.log(ILogger::Severity::kINFO, "C++ TensorRT (almost) minimal example1 !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
     unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model1.onnx", logger));
+
+    if (!engine)
+        throw runtime_error("Engine creation failed !");
 
     // Optional : Print all bindings : name + dims + dtype
     cout << "=============\nBindings :\n";

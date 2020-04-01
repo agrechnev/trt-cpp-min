@@ -16,3 +16,5 @@ link_libraries(nvinfer nvonnxparser ${CUDA_LIBRARIES})
 
 add_executable(example1 example1.cpp)
 add_executable(example2 example2.cpp)
+add_executable(example3-save example3-save.cpp)
+add_executable(example3-load example3-load.cpp)

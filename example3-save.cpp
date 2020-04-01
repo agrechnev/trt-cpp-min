@@ -1,9 +1,9 @@
 // By Oleksiy Grechnyev, IT-JIM
-// Example 2 : Batch inference for model2.onnx with dynamic batch size
+// Example 3-save : Like example 2, divided into 'save' and load 'parts'
 // I use here batch of 2
-// This is TensorRT 7.0 API, things were easier in older TensorRT !
 
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -81,29 +81,13 @@ nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer
 }
 
 //======================================================================================================================
-/// Run a single inference
-void launchInference(nvinfer1::IExecutionContext *context, cudaStream_t stream, std::vector<float> const &inputTensor,
-                     std::vector<float> &outputTensor, void **bindings, int batchSize) {
-
-    int inputId = 0, outputId = 1; // Here I assume input=0, output=1 for the current network
-
-    // Infer asynchronously, in a proper cuda way !
-    using namespace std;
-    cudaMemcpyAsync(bindings[inputId], inputTensor.data(), inputTensor.size() * sizeof(float), cudaMemcpyHostToDevice,
-                    stream);
-    context->enqueueV2(bindings, stream, nullptr);
-    cudaMemcpyAsync(outputTensor.data(), bindings[outputId], outputTensor.size() * sizeof(float),
-                    cudaMemcpyDeviceToHost, stream);
-}
-
-//======================================================================================================================
 int main() {
     using namespace std;
     using namespace nvinfer1;
 
     // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example2 !!! ");
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example3-save !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
     int batchSize = 2;
     unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model2.onnx", logger, batchSize));
@@ -127,38 +111,13 @@ int main() {
     }
     cout << "=============\n\n";
 
-    // Create context
-    logger.log(ILogger::Severity::kINFO, "Creating context ...");
-    unique_ptr<IExecutionContext, Destroy<IExecutionContext>> context(engine->createExecutionContext());
-    // Very important, you must set batch size here, otherwise you get zero output !
-    context->setBindingDimensions(0, Dims2(batchSize, 3));
+    // Write engine to disk
+    unique_ptr<IHostMemory, Destroy<IHostMemory>> serializedEngine(engine->serialize());
+    cout << "\nSerialized engine : size = " << serializedEngine->size() << ", dtype = " << (int) serializedEngine->type()
+         << endl;
 
-    // Create data structures for the inference
-    cudaStream_t stream;
-    cudaStreamCreate(&stream);
-    vector<float> inputTensor{0.5, -0.5, 1.0, 0.0, 0.0, 0.0};
-    vector<float> outputTensor(2 * batchSize, -4.9);
-    void *bindings[2]{0};
-    // Alloc cuda memory for IO tensors
-    size_t sizes[] = {inputTensor.size(), outputTensor.size()};
-    for (int i = 0; i < engine->getNbBindings(); ++i) {
-        // Create CUDA buffer for Tensor.
-        cudaMalloc(&bindings[i], sizes[i] * sizeof(float));
-    }
+    ofstream out("example3.engine", ios::binary);
+    out.write((char *)serializedEngine->data(), serializedEngine->size());
 
-    // Run the inference !
-    cout << "Running the inference !" << endl;
-    launchInference(context.get(), stream, inputTensor, outputTensor, bindings, batchSize);
-    cudaStreamSynchronize(stream);
-    // Must be [ [1.5, 3.5], [-1,-2] ]
-    cout << "y = [";
-    for (int i = 0; i < batchSize; ++i) {
-        cout << " [" << outputTensor.at(2 * i) << ", " << outputTensor.at(2 * i + 1) << "]";
-        if (i < batchSize - 1)
-            cout << ", ";
-    }
-    cout << " ]" << endl;
-
-    cudaStreamDestroy(stream);
     return 0;
 }

@@ -1,9 +1,9 @@
 // By Oleksiy Grechnyev, IT-JIM
-// Example 2 : Batch inference for model2.onnx with dynamic batch size
+// Example 3-save : Like example 2, divided into 'save' and load 'parts'
 // I use here batch of 2
-// This is TensorRT 7.0 API, things were easier in older TensorRT !
 
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -52,35 +52,6 @@ struct Destroy {
 };
 
 //======================================================================================================================
-
-/// Parse onnx file and create a TRT engine
-nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer1::ILogger &logger, int batchSize) {
-    using namespace std;
-    using namespace nvinfer1;
-
-    unique_ptr<IBuilder, Destroy<IBuilder>> builder{createInferBuilder(logger)};
-    unique_ptr<INetworkDefinition, Destroy<INetworkDefinition>> network{
-            builder->createNetworkV2(1U << (unsigned) NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)
-    };
-    unique_ptr<nvonnxparser::IParser, Destroy<nvonnxparser::IParser>> parser{
-            nvonnxparser::createParser(*network, logger)};
-
-    if (!parser->parseFromFile(onnxFileName.c_str(), static_cast<int>(ILogger::Severity::kINFO)))
-        throw runtime_error("ERROR: could not parse ONNX model " + onnxFileName + " !");
-
-    // Create Optimization profile and set the batch size
-    IOptimizationProfile *profile = builder->createOptimizationProfile();
-    profile->setDimensions("input", OptProfileSelector::kMIN, Dims2{batchSize, 3});
-    profile->setDimensions("input", OptProfileSelector::kMAX, Dims2{batchSize, 3});
-    profile->setDimensions("input", OptProfileSelector::kOPT, Dims2{batchSize, 3});
-
-    // Build engine
-    unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
-    config->addOptimizationProfile(profile);
-    return builder->buildEngineWithConfig(*network, *config);
-}
-
-//======================================================================================================================
 /// Run a single inference
 void launchInference(nvinfer1::IExecutionContext *context, cudaStream_t stream, std::vector<float> const &inputTensor,
                      std::vector<float> &outputTensor, void **bindings, int batchSize) {
@@ -101,15 +72,30 @@ int main() {
     using namespace std;
     using namespace nvinfer1;
 
-    // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example2 !!! ");
-    logger.log(ILogger::Severity::kINFO, "Creating engine ...");
-    int batchSize = 2;
-    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine("model2.onnx", logger, batchSize));
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example3-load !!! ");
 
+    // Load file, create engine
+    logger.log(ILogger::Severity::kINFO, "Loading engine from example3.engine...");
+    int batchSize = 2;
+
+    vector<char> buffer;
+    {
+        ifstream in("example3.engine", ios::binary | ios::ate);
+        if (!in)
+            throw runtime_error("Cannot open example3.engine");
+        streamsize ss = in.tellg();
+        in.seekg(0, ios::beg);
+        cout << "Input file size = " << ss << endl;
+        buffer.resize(ss);
+        if (0 == ss || !in.read(buffer.data(), ss))
+            throw runtime_error("Cannot read example3.engine");
+    }
+
+    unique_ptr<IRuntime, Destroy<IRuntime>> runtime(createInferRuntime(logger));
+    unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(runtime->deserializeCudaEngine(buffer.data(), buffer.size()));
     if (!engine)
-        throw runtime_error("Engine creation failed !");
+        throw runtime_error("Deserialize error !");
 
     // Optional : Print all bindings : name + dims + dtype
     cout << "=============\nBindings :\n";
