@@ -2,8 +2,10 @@
 // Example 2 : Batch inference for model2.onnx with dynamic batch size
 // I use here batch of 2
 // This is TensorRT 7.0 API, things were easier in older TensorRT !
+// Also contains rudimentary "print network" example
 
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -52,6 +54,52 @@ struct Destroy {
 };
 
 //======================================================================================================================
+/// Optional : Print dimensions as string
+std::string printDim(const nvinfer1::Dims & d) {
+    using namespace std;
+    ostringstream oss;
+    for (int j = 0; j < d.nbDims; ++j) {
+        oss << d.d[j];
+        if (j < d.nbDims - 1)
+            oss << "x";
+    }
+    return oss.str();
+}
+//======================================================================================================================
+/// Optional : Print layers of the network
+void printNetwork(const nvinfer1::INetworkDefinition &net) {
+    using namespace std;
+    using namespace nvinfer1;
+    cout << "\n=============\nNetwork info :" << endl;
+
+    cout << "\nInputs : " << endl;
+    for (int i = 0; i < net.getNbInputs(); ++i) {
+        ITensor * inp = net.getInput(i);
+        cout << "input" << i << " , dtype=" << (int)inp->getType() << " , dims=" << printDim(inp->getDimensions()) << endl;
+    }
+
+    cout << "\nLayers : " << endl;
+    cout << "Number of layers : " << net.getNbLayers() << endl;
+    for (int i = 0; i < net.getNbLayers(); ++i) {
+        ILayer *l = net.getLayer(i);
+        cout << "layer" << i << " , name=" << l->getName() << " , type=" << (int)l->getType() << " , IN ";
+        for (int j = 0; j < l->getNbInputs(); ++j)
+            cout <<  printDim(l->getInput(j)->getDimensions()) << " ";
+        cout << ", OUT ";
+        for (int j = 0; j < l->getNbOutputs(); ++j)
+            cout <<  printDim(l->getOutput(j)->getDimensions()) << " ";
+        cout << endl;
+    }
+
+    cout << "\nOutputs : " << endl;
+    for (int i = 0; i < net.getNbOutputs(); ++i) {
+        ITensor * outp = net.getOutput(i);
+        cout << "input" << i << " , dtype=" << (int)outp->getType() << " , dims=" << printDim(outp->getDimensions()) << endl;
+    }
+
+    cout << "=============\n" << endl;
+}
+//======================================================================================================================
 
 /// Parse onnx file and create a TRT engine
 nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer1::ILogger &logger, int batchSize) {
@@ -67,6 +115,9 @@ nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer
 
     if (!parser->parseFromFile(onnxFileName.c_str(), static_cast<int>(ILogger::Severity::kINFO)))
         throw runtime_error("ERROR: could not parse ONNX model " + onnxFileName + " !");
+
+    // Optional : print network info
+    printNetwork(*network);
 
     // Create Optimization profile and set the batch size
     IOptimizationProfile *profile = builder->createOptimizationProfile();
@@ -116,12 +167,7 @@ int main() {
     int n = engine->getNbBindings();
     for (int i = 0; i < n; ++i) {
         Dims d = engine->getBindingDimensions(i);
-        cout << i << " : " << engine->getBindingName(i) << " : dims=";
-        for (int j = 0; j < d.nbDims; ++j) {
-            cout << d.d[j];
-            if (j < d.nbDims - 1)
-                cout << "x";
-        }
+        cout << i << " : " << engine->getBindingName(i) << " : dims=" << printDim(d);
         cout << " , dtype=" << (int) engine->getBindingDataType(i) << " ";
         cout << (engine->bindingIsInput(i) ? "IN" : "OUT") << endl;
     }
