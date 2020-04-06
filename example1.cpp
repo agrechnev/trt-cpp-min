@@ -150,5 +150,7 @@ int main() {
     cout << "y = [" << outputTensor[0] << ", " << outputTensor[1] << "]" << endl;
 
     cudaStreamDestroy(stream);
+    cudaFree(bindings[0]);
+    cudaFree(bindings[1]);
     return 0;
 }

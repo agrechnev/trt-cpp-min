@@ -206,5 +206,7 @@ int main() {
     cout << " ]" << endl;
 
     cudaStreamDestroy(stream);
+    cudaFree(bindings[0]);
+    cudaFree(bindings[1]);
     return 0;
 }
