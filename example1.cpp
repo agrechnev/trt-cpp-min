@@ -70,6 +70,8 @@ nvinfer1::ICudaEngine *createCudaEngine(const std::string &onnxFileName, nvinfer
 
     // Modern version with config
     unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
+    // This is needed for TensorRT 6, not needed by 7 !
+    config->setMaxWorkspaceSize(64*1024*1024);
     return builder->buildEngineWithConfig(*network, *config);
 }
 

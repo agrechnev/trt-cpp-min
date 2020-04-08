@@ -138,6 +138,8 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
 
     // Set up the config
     unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
+    // This is needed for TensorRT 6, not needed by 7 !
+    config->setMaxWorkspaceSize(64*1024*1024);
     config->addOptimizationProfile(profile);
 
 
