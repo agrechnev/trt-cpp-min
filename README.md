@@ -21,8 +21,10 @@ b=[-1., -2.]
 
 For example, inferring for x=[0.5, -0.5, 1.0] should give y=[1.5, 3.5]. 
 
-* `gen_model1.py` A python 3 code to create and test `model1.onnx` and `model2.onnx`. Requires `torch`, `onnx`, `onnxruntime`  
+* `gen_models.py` A python 3 code to create `model1.onnx` and `model2.onnx`. Requires `torch`  
+* `check_models.py` A python 3 code to check and test `model1.onnx` and `model2.onnx`. Requires `numpy`, `onnx`, `onnxruntime`  
 * `example1` A minimal C++ example, runs `model1.onnx` (with fixed batch size of 1)  
 * `example2` Runs `model2.onnx` (with dynamic batch size)   
 * `example3` Serialization: like `example2`, but split into save and load parts  
 * `example4` Create simple network in-place (no ONNX parsing)  
+* `example5` Tried quantization (but it fails for these layers, it seems)  
