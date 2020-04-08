@@ -47,7 +47,7 @@ def main():
     torch.onnx.export(model,
                       x,
                       'model2.onnx',
-                      opset_version=9,
+                      #opset_version=11,
                       verbose=True,
                       export_params=True,
                       input_names=['input'],
