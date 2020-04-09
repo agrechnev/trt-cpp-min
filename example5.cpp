@@ -189,7 +189,7 @@ int main() {
 
     // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example4 !!! ");
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example5 !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
     int batchSize = 2;
     unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine(logger, batchSize));
