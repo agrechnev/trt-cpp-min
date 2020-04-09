@@ -35,4 +35,5 @@ as in `example1`, and only with batch_size = 1.
 * `example2` Runs `model2.onnx` (with dynamic batch size)   
 * `example3` Serialization: like `example2`, but split into save and load parts  
 * `example4` Create simple network in-place (no ONNX parsing)  
-* `example5` Another in-place network with FullyConnected layer, and tried INT8 quantization (but it fails for this layer, it seems). FP16 works fine though.  
+* `example5` Another in-place network with FullyConnected layer, and tried INT8 quantization (but it fails for this layer, it seems). FP16 works fine though.
+* `example6` Convolution layer example  

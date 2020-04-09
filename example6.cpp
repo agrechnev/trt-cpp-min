@@ -1,8 +1,7 @@
 // By Oleksiy Grechnyev, IT-JIM
-// Example 5 : Here I construct network in-place, no ONNX parsing !
-// Here I use a single Fully Connected layer
-// I use here dynamic batches, a batch of 2
-// I also tried int8, but it was not selected
+// Example 6 : Here I construct network in-place, no ONNX parsing !
+// Here I use a single Convolution layer
+// I use here dynamic batches, a batch of 1
 
 #include <iostream>
 #include <sstream>
@@ -55,7 +54,7 @@ struct Destroy {
 
 //======================================================================================================================
 /// Optional : Print dimensions as string
-std::string printDim(const nvinfer1::Dims & d) {
+std::string printDim(const nvinfer1::Dims &d) {
     using namespace std;
     ostringstream oss;
     for (int j = 0; j < d.nbDims; ++j) {
@@ -65,6 +64,7 @@ std::string printDim(const nvinfer1::Dims & d) {
     }
     return oss.str();
 }
+
 //======================================================================================================================
 /// Optional : Print layers of the network
 void printNetwork(const nvinfer1::INetworkDefinition &net) {
@@ -74,27 +74,29 @@ void printNetwork(const nvinfer1::INetworkDefinition &net) {
 
     cout << "\nInputs : " << endl;
     for (int i = 0; i < net.getNbInputs(); ++i) {
-        ITensor * inp = net.getInput(i);
-        cout << "input" << i << " , dtype=" << (int)inp->getType() << " , dims=" << printDim(inp->getDimensions()) << endl;
+        ITensor *inp = net.getInput(i);
+        cout << "input" << i << " , dtype=" << (int) inp->getType() << " , dims=" << printDim(inp->getDimensions())
+             << endl;
     }
 
     cout << "\nLayers : " << endl;
     cout << "Number of layers : " << net.getNbLayers() << endl;
     for (int i = 0; i < net.getNbLayers(); ++i) {
         ILayer *l = net.getLayer(i);
-        cout << "layer" << i << " , name=" << l->getName() << " , type=" << (int)l->getType() << " , IN ";
+        cout << "layer" << i << " , name=" << l->getName() << " , type=" << (int) l->getType() << " , IN ";
         for (int j = 0; j < l->getNbInputs(); ++j)
-            cout <<  printDim(l->getInput(j)->getDimensions()) << " ";
+            cout << printDim(l->getInput(j)->getDimensions()) << " ";
         cout << ", OUT ";
         for (int j = 0; j < l->getNbOutputs(); ++j)
-            cout <<  printDim(l->getOutput(j)->getDimensions()) << " ";
+            cout << printDim(l->getOutput(j)->getDimensions()) << " ";
         cout << endl;
     }
 
     cout << "\nOutputs : " << endl;
     for (int i = 0; i < net.getNbOutputs(); ++i) {
-        ITensor * outp = net.getOutput(i);
-        cout << "input" << i << " , dtype=" << (int)outp->getType() << " , dims=" << printDim(outp->getDimensions()) << endl;
+        ITensor *outp = net.getOutput(i);
+        cout << "input" << i << " , dtype=" << (int) outp->getType() << " , dims=" << printDim(outp->getDimensions())
+             << endl;
     }
 
     cout << "=============\n" << endl;
@@ -112,17 +114,16 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
     };
 
     // Weights + bias
-    vector<float> w0 = {1., 2., 3., 4., 5., 6.};
-    // I used this version to test FP16, which gives lower precision
-//    vector<float> w0 = {1., 2., 3., 4., 5., sqrt(37.123456789f)};
-    vector<float> b0 = {-1., -2.};
+    float q = 1.0f / 9;
+    vector<float> w0 = {q, q, q, q, q, q, q, q, q};  // 3x3 box filter
+    vector<float> b0 = {0};
     Weights w{DataType::kFLOAT, w0.data(), (int64_t) w0.size()};
     Weights b{DataType::kFLOAT, b0.data(), (int64_t) b0.size()};
 
     // A single 4D FC layer
-    ITensor *input = network->addInput("goblin_input", DataType::kFLOAT, Dims4(-1, 1, 1, 3));
-    IFullyConnectedLayer *fc = network->addFullyConnected(*input, 2, w, b);
-    ITensor *output = fc->getOutput(0);
+    ITensor *input = network->addInput("goblin_input", DataType::kFLOAT, Dims4(-1, 1, 10, 10));
+    IConvolutionLayer *conv = network->addConvolutionNd(*input, 1, Dims2(3, 3), w, b);
+    ITensor *output = conv->getOutput(0);
     output->setName("goblin_output");
     network->markOutput(*output);
 
@@ -135,14 +136,14 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
 
     // Create Optimization profile and set the batch size
     IOptimizationProfile *profile = builder->createOptimizationProfile();
-    profile->setDimensions("goblin_input", OptProfileSelector::kMIN, Dims4{batchSize, 1, 1, 3});
-    profile->setDimensions("goblin_input", OptProfileSelector::kMAX, Dims4{batchSize, 1, 1, 3});
-    profile->setDimensions("goblin_input", OptProfileSelector::kOPT, Dims4{batchSize, 1, 1, 3});
+    profile->setDimensions("goblin_input", OptProfileSelector::kMIN, Dims4{batchSize, 1, 10, 10});
+    profile->setDimensions("goblin_input", OptProfileSelector::kMAX, Dims4{batchSize, 1, 10, 10});
+    profile->setDimensions("goblin_input", OptProfileSelector::kOPT, Dims4{batchSize, 1, 10, 10});
 
     // Set up the config
     unique_ptr<IBuilderConfig, Destroy<IBuilderConfig>> config(builder->createBuilderConfig());
     // This is needed for TensorRT 6, not needed by 7 !
-    config->setMaxWorkspaceSize(64*1024*1024);
+    config->setMaxWorkspaceSize(64 * 1024 * 1024);
     config->addOptimizationProfile(profile);
 
     // Int8 quantization with the explicit range
@@ -157,8 +158,8 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
         ILayer *layer = network->getLayer(i);
         ITensor *tensor = layer->getOutput(0);
         tensor->setDynamicRange(minRange, maxRange);
-//        layer->setPrecision(DataType::kINT8);
-//        layer->setOutputType(0, DataType::kINT8);
+        layer->setPrecision(DataType::kINT8);
+        layer->setOutputType(0, DataType::kINT8);
     }
     network->getInput(0)->setDynamicRange(minRange, maxRange);
 
@@ -189,9 +190,9 @@ int main() {
 
     // Parse model, create engine
     Logger logger;
-    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example5 !!! ");
+    logger.log(ILogger::Severity::kINFO, "C++ TensorRT example6 !!! ");
     logger.log(ILogger::Severity::kINFO, "Creating engine ...");
-    int batchSize = 2;
+    int batchSize = 1;
     unique_ptr<ICudaEngine, Destroy<ICudaEngine>> engine(createCudaEngine(logger, batchSize));
 
     if (!engine)
@@ -208,17 +209,31 @@ int main() {
     }
     cout << "=============\n\n";
 
+
     // Create context
     logger.log(ILogger::Severity::kINFO, "Creating context ...");
     unique_ptr<IExecutionContext, Destroy<IExecutionContext>> context(engine->createExecutionContext());
     // Very important, you must set batch size here, otherwise you get zero output !
-    context->setBindingDimensions(0, Dims4(batchSize, 1, 1, 3));
+    context->setBindingDimensions(0, Dims4(batchSize, 1, 10, 10));
 
     // Create data structures for the inference
     cudaStream_t stream;
     cudaStreamCreate(&stream);
-    vector<float> inputTensor{0.5, -0.5, 1.0, 0.0, 0.0, 0.0};
-    vector<float> outputTensor(2 * batchSize, -4.9);
+    vector<float> inputTensor(10*10*batchSize, 3.1);
+    vector<float> outputTensor(8*8 * batchSize, -4.9);
+    for (int iy = 0; iy < 10; ++iy) {
+        for (int ix = 0; ix < 10; ++ix) {
+            inputTensor[iy*10 + ix] = (ix + iy) % 2;
+        }
+    }
+    cout << "input = " << endl;
+    for (int iy = 0; iy < 10; ++iy) {
+        for (int ix = 0; ix < 10; ++ix) {
+            cout << inputTensor[iy*10 + ix] << " ";
+        }
+        cout << endl;
+    }
+
     void *bindings[2]{0};
     // Alloc cuda memory for IO tensors
     size_t sizes[] = {inputTensor.size(), outputTensor.size()};
@@ -231,15 +246,14 @@ int main() {
     cout << "Running the inference !" << endl;
     launchInference(context.get(), stream, inputTensor, outputTensor, bindings, batchSize);
     cudaStreamSynchronize(stream);
-    // Must be [ [1.5, 3.5], [-1,-2] ]
-    cout << "y = [";
-    cout.precision(20);
-    for (int i = 0; i < batchSize; ++i) {
-        cout << " [" << outputTensor.at(2 * i) << ", " << outputTensor.at(2 * i + 1) << "]";
-        if (i < batchSize - 1)
-            cout << ", ";
+
+    cout << "output = " << endl;
+    for (int iy = 0; iy < 8; ++iy) {
+        for (int ix = 0; ix < 8; ++ix) {
+            cout << outputTensor[iy*8 + ix] << " ";
+        }
+        cout << endl;
     }
-    cout << " ]" << endl;
 
     cudaStreamDestroy(stream);
     cudaFree(bindings[0]);
