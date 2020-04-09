@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cmath>
 
 #include <NvInfer.h>
 
@@ -112,6 +113,8 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
 
     // Weights + bias
     vector<float> w0 = {1., 2., 3., 4., 5., 6.};
+    // I used this version to test FP16, gives lower precision
+//    vector<float> w0 = {1., 2., 3., 4., 5., sqrt(37.123456789f)};
     vector<float> b0 = {-1., -2.};
     Weights w{DataType::kFLOAT, w0.data(), (int64_t) w0.size()};
     Weights b{DataType::kFLOAT, b0.data(), (int64_t) b0.size()};
@@ -142,9 +145,9 @@ nvinfer1::ICudaEngine *createCudaEngine(nvinfer1::ILogger &logger, int batchSize
     config->setMaxWorkspaceSize(64*1024*1024);
     config->addOptimizationProfile(profile);
 
-
     // Int8 quantization with the explicit range
     config->setFlag(BuilderFlag::kINT8);
+//    config->setFlag(BuilderFlag::kFP16);
     config->setFlag(BuilderFlag::kSTRICT_TYPES);
 
     // Set the dynamic range for all layers and input
@@ -230,6 +233,7 @@ int main() {
     cudaStreamSynchronize(stream);
     // Must be [ [1.5, 3.5], [-1,-2] ]
     cout << "y = [";
+    cout.precision(20);
     for (int i = 0; i < batchSize; ++i) {
         cout << " [" << outputTensor.at(2 * i) << ", " << outputTensor.at(2 * i + 1) << "]";
         if (i < batchSize - 1)
