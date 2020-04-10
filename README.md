@@ -3,11 +3,12 @@ TensorRT 7 C++ (almost) minimal examples
 
 By Oleksiy Grechnyev, IT-JIM, Mar-Apr 2020.
 
-This is a minimal C++ TensorRT 7 example, much simpler than Nvidia examples. I create a trivial neural network 
+`example1` is a minimal C++ TensorRT 7 example, much simpler than Nvidia examples. I create a trivial neural network 
 of a single Linear layer (3D -> 2D output) in PyTorch, convert in to ONNX, and run in C++ TensorRT 7. Requires CUDA and
-TensorRT 7 (`libnvinfer`, `libnvonnxparser`) installed in your system.
+TensorRT 7 (`libnvinfer`, `libnvonnxparser`) installed in your system. Other examples are not much harder.
 
-Note : This is example for TensorRT 7 only (see below discussion on TensorRT 6). A lot has changed in this version ! ONNX with dynamic batch size is now difficult.
+Note : These examples are for TensorRT 7+ only (see discussion below on TensorRT 6). A lot has changed in this version, especially compared to TensorRT 5 !
+ONNX with dynamic batch size is now difficult.
 You must set the optimization profile, min/max/opt input size, and finally actual input size (in the context).
 Here I use `model1.onnx` with fixed batch size in `example1`, and `model2.onnx` with dynamic batch size in `example2`.  
 
