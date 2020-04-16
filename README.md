@@ -3,6 +3,8 @@ TensorRT 7 C++ (almost) minimal examples
 
 By Oleksiy Grechnyev, IT-JIM, Mar-Apr 2020.
 
+### Introduction
+
 `example1` is a minimal C++ TensorRT 7 example, much simpler than Nvidia examples. I create a trivial neural network 
 of a single Linear layer (3D -> 2D output) in PyTorch, convert in to ONNX, and run in C++ TensorRT 7. Requires CUDA and
 TensorRT 7 (`libnvinfer`, `libnvonnxparser`) installed in your system. Other examples are not much harder.
@@ -18,7 +20,8 @@ b=[-1., -2.]
 
 For example, inferring for x=[0.5, -0.5, 1.0] should give y=[1.5, 3.5].
 
-Experiments with TensorRT 6:    
+### Experiments with TensorRT 6:
+
 I tried to run this with TensorRT 6 in docker and discovered the following issues:  
 1. Parser does not like ONNX generated with PyTorch > 1.2, re-generated models on PyTorch 1.2  
 2. The code does not run without an extra line `config->setMaxWorkspaceSize(...);`  
@@ -28,7 +31,16 @@ I tried to run this with TensorRT 6 in docker and discovered the following issue
 My investigation showed that TensorRT 6 internally has all the dynamic dimension infrastructure
 (dim=-1, optimization profiles), but the ONNX parser cannot parse the ONNX network with the dynamic dimension!
 It just throws away the batch dimension (it is removed, not set to 1). As the result, you can infer such network
-as in `example1`, and only with batch_size = 1. 
+as in `example1`, and only with batch_size = 1.
+
+Update: This was with the "explicit batch" (`kEXPLICIT_BATCH`) option in the model definition. What does this mean?  
+Apparently, this option means that network has an explicit batch dimension (which can be 1 or -1 or something else).  
+
+* TensorRT 7 : Without `kEXPLICIT_BATCH`, ONNX cannot be parsed  
+* TensorRT 6 : With `kEXPLICIT_BATCH`, ONNX parser does not support dynamic dimensions, and even without them it tends to misbehave
+for many networks. However, with TensorRT 6 you can parse ONNX without `kEXPLICIT_BATCH`. This works fine in TensorRT 6, but not 7!  
+
+### Examples
 
 * `gen_models.py` A python 3 code to create `model1.onnx` and `model2.onnx`. Requires `torch`  
 * `check_models.py` A python 3 code to check and test `model1.onnx` and `model2.onnx`. Requires `numpy`, `onnx`, `onnxruntime`  
