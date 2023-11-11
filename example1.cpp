@@ -18,6 +18,7 @@
 
 class Logger : public nvinfer1::ILogger {
 public:
+    // virtual ~Logger() noexcept = default; and override maybe change to noexcept
     void log(Severity severity, const char *msg) override {
         using namespace std;
         string s;
